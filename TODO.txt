@@ -1,0 +1,4 @@
+Have client send to UDS of ODR.
+Have ODR read from UDS and then send broadcast
+Have ODR at destination send to UDS of server
+Have server read from UDS and then reverse the process abck to the client
