@@ -1,4 +1,11 @@
-Have client send to UDS of ODR.
-Have ODR read from UDS and then send broadcast
-Have ODR at destination send to UDS of server
-Have server read from UDS and then reverse the process abck to the client
+1. Write Clients awaitResponse method. We should just need to read from it's unixDomainSocket socket
+
+2. API functions in api.h and api.c
+
+3. Code review/cleanup
+
+4. Client/Server TIME/ECHO + Client ask loop
+ - timeout on client side
+
+
+5. Start doing some table stuff!

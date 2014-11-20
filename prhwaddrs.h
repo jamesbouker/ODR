@@ -1,4 +1,7 @@
-/* Our own header for the programs that need hardware address info. */
+#ifndef _WHY_NO_HEADER_
+#define _WHY_NO_HEADER_
+#define _SO_MUCH_TIME_WASTED_FOR_NO_REASON_
+
 #include "unp.h"
 #include <stdio.h>
 #include <sys/socket.h>
@@ -17,9 +20,11 @@ struct hwa_info {
   struct  hwa_info  *hwa_next;	/* next of these structures */
 };
 
+typedef struct hwa_info hwa_info;
 
 /* function prototypes */
-struct hwa_info	*get_hw_addrs();
-struct hwa_info	*Get_hw_addrs();
-void	free_hwa_info(struct hwa_info *);
+hwa_info	*get_hw_addrs();
+hwa_info	*Get_hw_addrs();
+void free_hwa_info(hwa_info *);
 
+#endif

@@ -1,28 +1,26 @@
 #include "odr.h"
-#include "prhwaddrs.h"
 #include "shared.h"
-#include <stdio.h>
-#include <sys/socket.h>
-#include <netpacket/packet.h>
-#include <net/ethernet.h>
-#include <unistd.h>
+#include "prhwaddrs.h"
 
 //#pragma mark - Data
+UnixDomainSocket *unixDomainSocketODR;
+UnixDomainSocket *unixDomainSocketServer;
+UnixDomainSocket *unixDomainSocketClient = NULL;
 
 int numberOfInterfaces;
 int lastBroadcastIdSent;
 Interface *interfaces;
 Interface eth0;
 
+char client_sun_path[100];
+
 //#pragma mark - Main
 
 int main(int argc, char **argv) {
-	printf("ODR running\n");
-	initOdr();
-	printf("My IP: %s\n", myIPAddress());
+	startODR();
 
-	if(strcmp(myIPAddress(), "130.245.156.21") == 0)
-		send_broadcast("130.245.156.25", "Hey!", 1, 2, 3);
+	printf("ODR running\n");
+	printf("My IP: %s\n", myIPAddress());
 
 	listenSelectLoop();
 
@@ -34,39 +32,71 @@ int main(int argc, char **argv) {
 void listenSelectLoop() {
 	fd_set set;
 	int max, ret, i;
-	max = 0;
+	max = unixDomainSocketODR->fd;
 	for (i = 0; i < numberOfInterfaces; i++)
 		max = max(max, interfaces[i].fd);
 
 	while (1) {
-		printf("Entered select loop\n");
+		printf("waiting on select\n");
 
 		FD_ZERO(&set);
 		for (i = 0; i < numberOfInterfaces; i++)
 			FD_SET(interfaces[i].fd, &set);
+		FD_SET(unixDomainSocketODR->fd, &set);
 
 		ret = select(max + 1, &set, NULL, NULL, NULL);
 		printf("select returned: %d\n", ret);
 		if (ret > 0) {
-			//code!
-			ODRPacket packet;
-			char addr[6];
-			bzero(&packet, sizeof(packet));
-			recieve_broadcast(interfaces[0].fd, addr, &packet, sizeof(ODRPacket));
-			printf("%s Recieved broadcast: %s\nFrom %s for %s\n", myIPAddress(), packet.message, packet.from, packet.dest);
-			if(strcmp(myIPAddress(), packet.dest) == 0) {
-				printf("Packet made it to destination!!!!\n");
-				//inform the server here!
+			if(FD_ISSET(unixDomainSocketODR->fd, &set)) {
+				//unix domain was written to!
+				UnixDomainPacket packet; bzero(&packet, sizeof(packet));
+				readFromUnixDomainSocket(unixDomainSocketODR->fd, client_sun_path, &packet);
+				if(unixDomainSocketClient == NULL)
+					unixDomainSocketClient = unixDomainSocketMake(UnixDomainSocketTypeClient, 0, client_sun_path);
+
+				printf("ODR recieved a message in it's Unix Domain Socket\n");
+				printf("Client sun_path: %s\n", client_sun_path);
+				printf("From: %s To: %s\nMessage: %s rediscover: %d type: %d\n\n", packet.from, packet.dest, packet.message, packet.rediscover, packet.type);
+				
+				//if not us -> broadcast it
+				lastBroadcastIdSent++;
+				send_broadcast(packet.dest, packet.message, lastBroadcastIdSent, packet.type, packet.rediscover);
+				printf("Sending broadcast\n");
 			}
 			else {
-				if(lastBroadcastIdSent != packet.broadcastId) {
-					//never saw this guy before - re broadcast
-					lastBroadcastIdSent = packet.broadcastId;
-					printf("Forwarding broadcast with id: %d\n", packet.broadcastId);
-					send_broadcast(packet.dest, packet.message, packet.broadcastId, packet.type, packet.rediscover);
+				//find the incoming interface
+				int iIndex;
+				for(iIndex=0; iIndex<numberOfInterfaces; iIndex++)
+					if(FD_ISSET(interfaces[iIndex].fd, &set))
+						break;
+
+				//broadcast recieved
+				ODRPacket packet;
+				char addr[6];
+				bzero(&packet, sizeof(packet));
+				recieve_broadcast(interfaces[iIndex].fd, addr, &packet, sizeof(ODRPacket));
+				printf("%s Recieved broadcast: %s\nFrom %s for %s\n", myIPAddress(), packet.message, packet.from, packet.dest);
+				if(strcmp(myIPAddress(), packet.dest) == 0) {
+					printf("Packet made it to destination!!!!\n");
+
+					if(packet.type == PacketTypeRequest)
+						sendToUnixDomainSocket(unixDomainSocketServer->fd, unixDomainSocketServer->sun_path, packet.message, packet.type, packet.rediscover, packet.from, packet.dest);
+					else if(packet.type == PacketTypeReply) {
+						printf("Recieved reply, send to client!\n");
+						sendToUnixDomainSocket(unixDomainSocketClient->fd, unixDomainSocketClient->sun_path, packet.message, packet.type, packet.rediscover, packet.from, packet.dest);
+					}
+
 				}
 				else {
-					printf("Ignoring broadcast with id: %d\n", packet.broadcastId);
+					if(lastBroadcastIdSent < packet.broadcastId) {
+						//never saw this guy before - re broadcast
+						lastBroadcastIdSent = packet.broadcastId;
+						printf("Forwarding broadcast with id: %d\n", packet.broadcastId);
+						send_broadcast(packet.dest, packet.message, packet.broadcastId, packet.type, packet.rediscover);
+					}
+					else {
+						printf("Ignoring broadcast with id: %d\n", packet.broadcastId);
+					}
 				}
 			}
 		}
@@ -75,7 +105,7 @@ void listenSelectLoop() {
 
 //#pragma mark - Initialization
 
-void initOdr() {
+void startODR() {
 	struct 	hwa_info *hwa, *hwahead;
 	struct 	sockaddr *sa;
 	char   	*ptr;
@@ -155,6 +185,9 @@ void initOdr() {
 	}
 
 	free_hwa_info(hwahead);
+
+	unixDomainSocketODR = unixDomainSocketMake(UnixDomainSocketTypeODR, 1, NULL);
+	unixDomainSocketServer = unixDomainSocketMake(UnixDomainSocketTypeServer, 0, NULL);
 }
 
 void send_broadcast(char* destIp, char *msg, int broadcastId, int type, int rediscover) {
@@ -179,7 +212,7 @@ int send_broadcast_helper(int fd, int if_index, void *msg, int len) {
 	
 	addr.sll_halen = 6;
 	addr.sll_hatype = 1;
-	addr.sll_pkttype=PACKET_BROADCAST;
+	addr.sll_pkttype = PACKET_BROADCAST;
 	addr.sll_family = AF_PACKET;
 	addr.sll_protocol = htons(PROTO_NUM);
 	addr.sll_ifindex = if_index;
