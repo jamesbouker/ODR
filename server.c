@@ -22,19 +22,25 @@ void listenLoop() {
 
 		if (ret > 0) {
 			//unix domain was written to!
-			UnixDomainPacket packet; bzero(&packet, sizeof(packet));
-			readFromUnixDomainSocket(listeningSocket->fd, NULL, &packet);
+			char message[MAXLINE];
+			char fromAddr[MAXLINE];
+			int port;
+			msg_recv(listeningSocket->fd, message, fromAddr, &port);
+
 			printf("The server recieved a message in it's Unix Domain Socket\n");
-			printf("From: %s To: %s\nMessage: %s rediscover: %d\n", packet.from, packet.dest, packet.message, packet.rediscover);
+			printf("From: %s\nMessage: %s\n", fromAddr, message);
 			
-			if(strcmp("time", packet.message) == 0) {
+			if(strcmp("TIME", message) == 0) {
 				//send time
+				time_t ts = time(NULL);
+    			char *buff = ctime(&ts);
 				printf("SENDING TIME TO CLIENT\n");
+				msg_send(listeningSocket->fd, fromAddr, port, buff, -1);
 			}
 			else {
 				//send echo
 				printf("SENDING ECHO TO CLIENT\n");
-				sendToUnixDomainSocket(listeningSocket->fd, ODR_SUN_PATH, packet.message, PacketTypeReply, 0, serverIP(), packet.from);
+				msg_send(listeningSocket->fd, fromAddr, port, message, -1);
 			}
 		}
 	}

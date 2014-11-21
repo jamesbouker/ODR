@@ -85,7 +85,7 @@ void unixDomainSocketUnlink(UnixDomainSocket * unixSocket) {
 	unlink(unixSocket->sun_path); 
 }
 
-void sendToUnixDomainSocket(int fd, char *sun_path, char *message, PacketType type, int rediscover, char *fromIp, char *toIp) {
+int sendToUnixDomainSocket(int fd, char *sun_path, char *message, PacketType type, int rediscover, char *fromIp, char *toIp, int port) {
 	UnixDomainPacket packet;
 	bzero(&packet, sizeof(packet));
 
@@ -94,6 +94,7 @@ void sendToUnixDomainSocket(int fd, char *sun_path, char *message, PacketType ty
 	strcpy(packet.message, message);
 	packet.rediscover = rediscover;
 	packet.type = type;
+	packet.port = port;
 
 	struct sockaddr_un actualSocket;
 	bzero(&actualSocket, sizeof(actualSocket));
@@ -101,12 +102,40 @@ void sendToUnixDomainSocket(int fd, char *sun_path, char *message, PacketType ty
 	strcpy(actualSocket.sun_path, sun_path);
 	int sendRet = sendto(fd, &packet, sizeof(packet), 0, (struct sockaddr *)&actualSocket, sizeof(actualSocket));
 	printf("sendToUnixDomainSocket: Ret: %d fd: %d\nFrom: %s Destination: %s \nmessage: %s sun_path: %s\ntype: %d\n\n",sendRet, fd, packet.from, packet.dest, packet.message, actualSocket.sun_path, packet.type);
+	return sendRet;
 }
 
-void readFromUnixDomainSocket(int fd, char *sun_path, UnixDomainPacket *packet) {
+int readFromUnixDomainSocket(int fd, char *sun_path, UnixDomainPacket *packet) {
 	struct sockaddr_un actualSocket;
 	socklen_t addrlen = sizeof(actualSocket);
-	recvfrom(fd, packet, sizeof(packet[0]), 0, (struct sockaddr *)&actualSocket, &addrlen);
+	int ret = recvfrom(fd, packet, sizeof(packet[0]), 0, (struct sockaddr *)&actualSocket, &addrlen);
 	if(sun_path != NULL)
 		strcpy(sun_path, actualSocket.sun_path);
+
+	return ret;
+}
+
+//#pragma - mark API
+
+int msg_send(int fd, char *destAddr, int destPort, char *message, int rediscover) {
+	Interface inf = getEth0();
+	char *ip = inf.ip_addr;
+
+	// A little hacky - Q: How would ODR know what sun_path to deliver to without this extra field?
+	PacketType type = PacketTypeAPISend;
+	if(rediscover == -1)
+		type = PacketTypeAPIReply;
+
+	int ret = sendToUnixDomainSocket(fd, ODR_SUN_PATH, message, type, rediscover, ip, destAddr, destPort);
+	return ret;
+}
+
+int msg_recv(int fd, char *message, char *fromAddr, int *fromPort) {
+	UnixDomainPacket packet; bzero(&packet, sizeof(packet));
+	int ret = readFromUnixDomainSocket(fd, NULL, &packet);
+
+	strcpy(message, packet.message);
+	strcpy(fromAddr, packet.from);
+	fromPort[0] = packet.port;
+	return ret;
 }

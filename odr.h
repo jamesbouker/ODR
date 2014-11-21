@@ -3,7 +3,7 @@
 
 void 	startODR();
 // void listen();
-void 	send_broadcast(char* destIp, char *msg, int broadcastId, int type, int rediscover);
+void 	send_broadcast(char* destIp, char *msg, int broadcastId, int type, int rediscover, int port);
 int 	send_broadcast_helper(int fd, int if_index, void *msg, int len);
 int 	recieve_broadcast(int fd, char *addr, void *msg, int len);
 void 	listenSelectLoop();

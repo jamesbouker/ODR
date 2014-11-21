@@ -23,7 +23,9 @@
 
 typedef enum {
 	PacketTypeRequest = 0,
-	PacketTypeReply
+	PacketTypeReply,
+	PacketTypeAPISend,
+	PacketTypeAPIReply
 } PacketType;
 
 typedef struct {
@@ -32,6 +34,7 @@ typedef struct {
 	char message[300];
 	int broadcastId;
 	int rediscover;
+	int port;
 	PacketType type;
 } ODRPacket;
 
@@ -40,6 +43,7 @@ typedef struct {
 	char dest[20];
 	char message[300];
 	int rediscover;
+	int port;
 	PacketType type;
 } UnixDomainPacket;
 
@@ -74,8 +78,8 @@ typedef struct {
 //returns a UnixDomainSocket ptr, caller is responsible for freeing! 
 UnixDomainSocket * unixDomainSocketMake(UnixDomainSocketType type, int shouldBind, char *sun_path);
 void unixDomainSocketUnlink(UnixDomainSocket *socket);
-void sendToUnixDomainSocket(int fd, char *sun_path, char *message, PacketType type, int rediscover, char *fromIp, char *toIp);
-void readFromUnixDomainSocket(int fd, char *sun_path, UnixDomainPacket *packet);
+int sendToUnixDomainSocket(int fd, char *sun_path, char *message, PacketType type, int rediscover, char *fromIp, char *toIp, int port);
+int readFromUnixDomainSocket(int fd, char *sun_path, UnixDomainPacket *packet);
 
 //API
 
