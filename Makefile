@@ -3,8 +3,8 @@ FLAGS=-g -O2 -Wall -Werror
 CFLAGS = ${FLAGS} -I/home/stufs1/cse533/Stevens/unpv13e/lib
 LIBS =  /home/courses/cse533/Stevens/unpv13e/libunp.a
 EXE=odr_$(SELF) server_$(SELF) client_$(SELF)
-EVERYTHINGELSE = uds.h prhwaddrs.h
-SELF = jbouker
+EVERYTHINGELSE = uds.h prhwaddrs.h table.h
+SELF = yourMinixIdHere
 
 all: $(EXE)
 
@@ -14,7 +14,7 @@ server_$(SELF): server.o prhwaddrs.o shared.o
 client_$(SELF): client.o prhwaddrs.o shared.o
 	gcc $(CFLAGS) -o $@ $^ ${LIBS}
 
-odr_$(SELF): odr.o prhwaddrs.o shared.o
+odr_$(SELF): odr.o prhwaddrs.o shared.o table.o
 	gcc $(CFLAGS) -o $@ $^ ${LIBS}
 
 shared: shared.o prhwaddrs.o

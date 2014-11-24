@@ -115,6 +115,15 @@ int readFromUnixDomainSocket(int fd, char *sun_path, UnixDomainPacket *packet) {
 	return ret;
 }
 
+ODRNode ODRNodeMake(int if_index, char *hw_addr) {
+	ODRNode node;
+	node.if_index = if_index;
+	int i;
+	for(i=0; i<6; i++)
+		node.hw_addr[i] = hw_addr[i];
+	return node;
+}
+
 //#pragma - mark API
 
 int msg_send(int fd, char *destAddr, int destPort, char *message, int rediscover) {

@@ -35,8 +35,15 @@ typedef struct {
 	int broadcastId;
 	int rediscover;
 	int port;
+	int numHops;
+	char hw_addr[6];
 	PacketType type;
 } ODRPacket;
+
+typedef struct {
+	char hw_addr[6];
+	int if_index;
+} ODRNode;
 
 typedef struct {
 	char from[20];
@@ -80,6 +87,7 @@ UnixDomainSocket * unixDomainSocketMake(UnixDomainSocketType type, int shouldBin
 void unixDomainSocketUnlink(UnixDomainSocket *socket);
 int sendToUnixDomainSocket(int fd, char *sun_path, char *message, PacketType type, int rediscover, char *fromIp, char *toIp, int port);
 int readFromUnixDomainSocket(int fd, char *sun_path, UnixDomainPacket *packet);
+ODRNode ODRNodeMake(int if_index, char *hw_addr);
 
 //API
 

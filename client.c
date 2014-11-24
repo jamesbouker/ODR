@@ -12,8 +12,11 @@ char * clientIP() {
 	return eth0.ip_addr;
 }
 
+int count=0;
 void sendMessage(UnixDomainSocket *socket, char *destIp, char *message, int rediscover) {
-	msg_send(socket->fd, destIp, 7847, message, rediscover);
+	// count++;
+	// if(count != 2)
+		msg_send(socket->fd, destIp, 7847, message, rediscover);
 }
 
 void awaitResponse(UnixDomainSocket *socket) {
