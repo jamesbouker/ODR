@@ -43,7 +43,7 @@ UnixDomainSocket * unixDomainSocketMake(UnixDomainSocketType type, int shouldBin
 	else if(type == UnixDomainSocketTypeODR)
 		strcpy(sun_path, ODR_SUN_PATH);
 	else if (type == UnixDomainSocketTypeClient && init_sun_path == NULL) {
-		strcpy(buff, CLIENT_SUN_PATH);
+		strcpy(buff, "/tmp/-XXXXXX");
 		int newFd = mkstemp(buff);
 		close(newFd);
 		strcpy(sun_path, buff);
@@ -59,7 +59,7 @@ UnixDomainSocket * unixDomainSocketMake(UnixDomainSocketType type, int shouldBin
 		unixSocket->fd = fd;
 
 	strcpy(unixSocket->sun_path, sun_path);
-	printf("UnixDomainSocket sun_path: %s\n", unixSocket->sun_path);
+	// printf("UnixDomainSocket sun_path: %s\n", unixSocket->sun_path);
 
 	unixDomainSocketUnlink(unixSocket);
 	actualSocket.sun_family = AF_LOCAL;
@@ -76,7 +76,7 @@ UnixDomainSocket * unixDomainSocketMake(UnixDomainSocketType type, int shouldBin
 	if(type == UnixDomainSocketTypeClient)
 		strcpy(unixSocket->sun_path, ODR_SUN_PATH);
 
-	printf("FD: %d\n", unixSocket->fd);
+	// printf("FD: %d\n", unixSocket->fd);
 
 	return unixSocket;
 }
@@ -101,7 +101,7 @@ int sendToUnixDomainSocket(int fd, char *sun_path, char *message, PacketType typ
 	actualSocket.sun_family = AF_LOCAL;
 	strcpy(actualSocket.sun_path, sun_path);
 	int sendRet = sendto(fd, &packet, sizeof(packet), 0, (struct sockaddr *)&actualSocket, sizeof(actualSocket));
-	printf("sendToUnixDomainSocket: Ret: %d fd: %d\nFrom: %s Destination: %s \nmessage: %s sun_path: %s\ntype: %d\n\n",sendRet, fd, packet.from, packet.dest, packet.message, actualSocket.sun_path, packet.type);
+	//printf("sendToUnixDomainSocket: Ret: %d fd: %d\nFrom: %s Destination: %s \nmessage: %s sun_path: %s\ntype: %d\n\n",sendRet, fd, packet.from, packet.dest, packet.message, actualSocket.sun_path, packet.type);
 	return sendRet;
 }
 
@@ -122,6 +122,30 @@ ODRNode ODRNodeMake(int if_index, char *hw_addr) {
 	for(i=0; i<6; i++)
 		node.hw_addr[i] = hw_addr[i];
 	return node;
+}
+
+int vmNum(char *ip) {
+	if(strcmp(ip, "130.245.156.21") == 0)
+		return 1;
+	else if(strcmp(ip, "130.245.156.22") == 0)
+		return 2;
+	else if(strcmp(ip, "130.245.156.23") == 0)
+		return 3;
+	else if(strcmp(ip, "130.245.156.24") == 0)
+		return 4;
+	else if(strcmp(ip, "130.245.156.25") == 0)
+		return 5;
+	else if(strcmp(ip, "130.245.156.26") == 0)
+		return 6;
+	else if(strcmp(ip, "130.245.156.27") == 0)
+		return 7;
+	else if(strcmp(ip, "130.245.156.28") == 0)
+		return 8;
+	else if(strcmp(ip, "130.245.156.29") == 0)
+		return 9;
+	else if(strcmp(ip, "130.245.156.20") == 0)
+		return 10;
+	return -1;
 }
 
 //#pragma - mark API

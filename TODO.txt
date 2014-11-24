@@ -1,2 +1,104 @@
-1. Start doing some table ODR goodness
-2. If time permits allow for multiple clients on a single node
+On APIRequest MessageFrom Client
+
+	If IP not in table
+		- Store the request in a variable
+		- Send out a broadcast of type RREQ
+		- Wait for RREP
+		- On RREP send packet of APP REQ to nextNode
+
+	If IP In table
+		IF not rediscover
+			- send paceket of APP REQ to nextNode
+
+		else If rediscover
+			- remove it and start from top!
+
+
+On APIReply MessageFrom Server
+	get ip from table and send
+	if doesn't exist don't give a shit
+
+
+
+DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE 
+
+On APIRequest || APIReply from ODR
+	IF THIS IS DESTINATION
+		send to either client or server UnixDomainSocket	
+	else
+		If IP in table
+			- send to next node
+		else
+			- stop
+
+DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE 
+
+ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR ODR 
+On ODR REQ from ODR
+	If not rediscover
+		if exists in table
+			- send back ODR RREP with numHops+1 and my HW adress with type ODR RREP
+		else if it is me
+			- send back ODR RREP with numHops=1 and my HW adress with type ODR RREP
+		else
+			- broadcast out that shit ODR REQ
+			- record we are looking for this & who the broadcast came from
+
+	else if rediscover
+		- delete from the table
+		- send out a ODR REQ broadcast
+		- record we are looking for this & who the broadcast came from
+
+DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE DONE 
+
+
+
+
+
+
+
+
+
+
+
+On ODR RREP
+
+	If it exists in our table and is better then what we have
+		- update the table
+	Else 
+		- Add to the table
+
+	IF client was waiting to send
+		Send that shit!
+	else IF ODR record happened
+		if not in table
+			- send RREP w/ numHops+1 and our HW adress to recorded node 
+		else if currentNumHops < oldNumHops
+			- record we are looking for this & who the broadcast came from
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

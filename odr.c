@@ -5,7 +5,7 @@
 
 //#pragma mark - Data
 UnixDomainSocket *unixDomainSocketODR;
-UnixDomainSocket *unixDomainSocketServer;
+UnixDomainSocket *unixDomainSocketServer; 
 UnixDomainSocket unixDomainSocketClient;
 
 int numberOfInterfaces;
@@ -45,7 +45,7 @@ void listenSelectLoop() {
 		max = max(max, interfaces[i].fd);
 
 	while (1) {
-		printf("waiting on select\n");
+		// printf("waiting on select\n");
 
 		FD_ZERO(&set);
 		for (i = 0; i < numberOfInterfaces; i++)
@@ -53,7 +53,7 @@ void listenSelectLoop() {
 		FD_SET(unixDomainSocketODR->fd, &set);
 
 		ret = select(max + 1, &set, NULL, NULL, NULL);
-		printf("select returned: %d\n", ret);
+		// printf("select returned: %d\n\n\n", ret);
 		if (ret > 0) {
 			if(FD_ISSET(unixDomainSocketODR->fd, &set)) {
 				//unix domain was written to!
@@ -62,17 +62,18 @@ void listenSelectLoop() {
 				unixDomainSocketClient = unixDomainSocketODR[0];
 				strcpy(unixDomainSocketClient.sun_path, client_sun_path);
 
-				printf("ODR recieved a message in it's Unix Domain Socket\n");
-				printf("sun_path: %s\n", client_sun_path);
-				printf("From: %s To: %s\nMessage: %s rediscover: %d type: %d\n\n", packet.from, packet.dest, packet.message, packet.rediscover, packet.type);
+				// printf("Recieved message in my Unix Domain Socket\n");
+				// printf("sun_path: %s\n", client_sun_path);
+				// printf("From: %s To: %s\nMessage: %s rediscover: %d type: %d\n\n", packet.from, packet.dest, packet.message, packet.rediscover, packet.type);
 
 				TableEntry *entry = entryForIp(&table, packet.dest);
 				if(packet.rediscover != -1) {
 					//FROM CLIENT
+					printf("Recieved message in my Unix Domain Socket: Fromt the client\n");
 					if(entry == NULL) {
 						printf("Entry doesn't exist: sending broadcast\n");
 						packetFromClient = packet;
-						send_broadcast(packet.dest, myIPAddress(), packet.message, lastBroadcastIdSent, PacketTypeRequest, packet.rediscover, packet.port, -1, 1,1);
+						send_broadcast(packet.dest, myIPAddress(), packet.message, lastBroadcastIdSent, PacketTypeRequest, packet.rediscover, packet.port, -1, 1);
 						lastBroadcastIdSent++;
 					}
 					else {
@@ -86,16 +87,18 @@ void listenSelectLoop() {
 						}
 						else {
 							//send packet of APP REQ to nextNode
-							printf("Sending app level message to next hop\n");
-							send_to_node(packet.dest, packet.message, PacketTypeAPISend, packet.rediscover, packet.port, entry->if_index, entry->nextHopNode);
+							printf("Sending API level message to next hop\n");
+							send_to_node(packet.dest, packet.from, packet.message, PacketTypeAPISend, packet.rediscover, packet.port, entry->if_index, entry->nextHopNode, 1);
 						}
 					}
 				}
 				else {
 					//FROM SERVER
 					printf("ODR recieved from the server!\n");
-					if(entry != NULL)
-						send_to_node(packet.dest, packet.message, PacketTypeAPIReply, packet.rediscover, packet.port, entry->if_index, entry->nextHopNode);
+					if(entry != NULL) {
+						printf("Sending API level Reply to next hop\n");
+						send_to_node(packet.dest, packet.from, packet.message, PacketTypeAPIReply, packet.rediscover, packet.port, entry->if_index, entry->nextHopNode, -1);
+					}
 					else {
 						printf("Reverse adress not in table for: %s\n", packet.dest);
 						printTable(&table);
@@ -108,20 +111,40 @@ void listenSelectLoop() {
 				for(iIndex=0; iIndex<numberOfInterfaces; iIndex++)
 					if(FD_ISSET(interfaces[iIndex].fd, &set))
 						break;
+				Interface inf = interfaces[iIndex];
 
 				//broadcast recieved
 				ODRPacket packet;
 				char addr[6];
 				bzero(&packet, sizeof(packet));
 				recieve_broadcast(interfaces[iIndex].fd, addr, &packet, sizeof(ODRPacket));
-				printf("%sODR recieved packet: %s\nFrom client at %s for %s\n", myIPAddress(), packet.message, packet.from, packet.dest);
+				printf("\n\n%s ODR recieved a packet from node at %s for %s\n", myIPAddress(), packet.from, packet.dest);
 				
 				if(packet.type == PacketTypeAPIReply || packet.type == PacketTypeAPISend) {
-					printf("It was an APP level packet\n");
+					printf("It was an API packet\n");
 					//APP LEVEL PACKETS
+
+					//add the return address
+					if(packet.type == PacketTypeAPISend) {
+						TableEntry *retEntry = entryForIp(&table, packet.from);
+						TableEntry newEntry = tableEntryMake(packet.from, packet.hw_addr, inf.if_index, packet.numHops, 1);
+						if(retEntry == NULL) {
+							printf("Added return adrress to the table\n");
+							addTableEntry(&table, newEntry);
+							printTable(&table);
+						}
+						else if(retEntry->numHops > newEntry.numHops) {
+							//add if better
+							printf("updating better return adress in table\n");
+							removeTableEntry(&table, packet.from);
+							addTableEntry(&table, newEntry);
+							printTable(&table);
+						}
+					}
+
 					if(strcmp(myIPAddress(), packet.dest) == 0) {
 						if(packet.type == PacketTypeAPISend) {
-							printf("Server recieved!\n");
+							printf("API packet made it to it's destination, delivering to the server!\n");
 							sendToUnixDomainSocket(unixDomainSocketServer->fd, unixDomainSocketServer->sun_path, packet.message, packet.type, packet.rediscover, packet.from, packet.dest, packet.port);
 						}
 						else if(packet.type == PacketTypeAPIReply) {
@@ -132,9 +155,11 @@ void listenSelectLoop() {
 					else {
 						//not the destination -> forward to the next guy
 						TableEntry *entry = entryForIp(&table, packet.dest);
+						TableEntry *retEntry = entryForIp(&table, packet.from);
 						if(entry != NULL) {
 							//in our table
-							send_to_node(packet.dest, packet.message, packet.type, packet.rediscover, packet.port, entry->if_index, entry->nextHopNode);
+							printf("This is not for us, forward to the next hop\n");
+							send_to_node(packet.dest, packet.from, packet.message, packet.type, packet.rediscover, packet.port, entry->if_index, entry->nextHopNode, retEntry->numHops+1);
 						}
 						else {
 							//not in our table - give up - edge case - should never happen
@@ -144,102 +169,109 @@ void listenSelectLoop() {
 				else {
 					//ODR PACKETS
 					printf("It was an ODR level packet\n");
-					printf("Dest: %s from: %s\nmessage: %s broadcastId: %d, rediscover: %d numHops: %d\n",packet.dest, packet.from,packet.message,packet.broadcastId,packet.rediscover,packet.numHops);
-					Interface inf = interfaces[iIndex];
 
-					TableEntry *entry = entryForIp(&table, packet.dest);
-					if(packet.type == PacketTypeRequest) {
-						if(packet.broadcastId >= lastBroadcastIdHeard) {
-
-							if(packet.broadcastId > lastBroadcastIdHeard && packet.rediscover == 1 && packet.type == PacketTypeRequest) {
-								printf("rediscover set - emptying table\n");
-								table.size = 0;
-								entry = NULL;
-							}
-							lastBroadcastIdHeard = packet.broadcastId;
-							if(lastBroadcastIdSent < lastBroadcastIdHeard+1)
-								lastBroadcastIdSent = lastBroadcastIdHeard+1;
-
-							//add the return address
-							TableEntry *retEntry = entryForIp(&table, packet.from);
-							TableEntry newEntry = tableEntryMake(packet.from, packet.hw_addr, inf.if_index, packet.numHops, 1);
-							int shouldForward = 0;
-							if(retEntry == NULL) {
-								printf("Added return adrress to the table\n");
-								addTableEntry(&table, newEntry);
-								reqresp[packet.broadcastId] = ODRNodeMake(inf.if_index, packet.hw_addr);
-								reqrespSize++;
-								shouldForward = 1;
-							}
-							else if(retEntry->numHops > newEntry.numHops) {
-								//add if better
-								printf("updating better return adress in table\n");
-								removeTableEntry(&table, packet.from);
-								addTableEntry(&table, newEntry);
-								reqresp[packet.broadcastId] = ODRNodeMake(inf.if_index, packet.hw_addr);
-								reqrespSize++;
-								shouldForward = 1;
-							}
-							else if(reqrespSize <= packet.broadcastId) {
-								reqresp[packet.broadcastId] = ODRNodeMake(inf.if_index, packet.hw_addr);
-								reqrespSize++;
-								shouldForward = 1;
-							}
-							entry = entryForIp(&table, packet.dest);
-
-							if(packet.rediscover == 1 || packet.rediscover == 0) {
-								if(strcmp(myIPAddress(), packet.dest) == 0) {
-									printf("You found me: Sending RREP!\n");
-									send_to_odr_node(packet.from, PacketTypeReply, packet.rediscover, packet.port, inf.if_index, packet.hw_addr, 1);
-								}
-								else if(entry != NULL) {
-									//- send back ODR RREP with numHops+1 and my HW adress with type ODR RREP
-									send_to_odr_node(packet.dest, PacketTypeReply, packet.rediscover, packet.port, inf.if_index, packet.hw_addr, entry->numHops+1);
-								}
-								else if(shouldForward) {
-									//we should only do this if we just found a better path or did not have on earlier
-									//BROADCAST OUT A RREQ
-									send_broadcast(packet.dest, packet.from, packet.message, packet.broadcastId, packet.type, packet.rediscover, packet.port, inf.if_index, entry->numHops+1);
-								}
-							}
-						}
+					if(strcmp(myIPAddress(), packet.from) == 0) {
+						printf("Ignoring packet: I initiated the broadcast\n");
 					}
-					else if(packet.type == PacketTypeReply) {
-						printf("ODR Recieved RREP\n");
-						//ODR RREP
-						TableEntry *serverEntry = entryForIp(&table, packet.from);
-						printf("retrieved serverEntry\n");
-						TableEntry newEntry = tableEntryMake(packet.from, packet.hw_addr, inf.if_index, packet.numHops, 1);
-						printf("made new entry\n");
-						if(serverEntry != NULL && serverEntry->numHops > packet.numHops) {
-							printf("trying to replace entry\n");
-							removeTableEntry(&table, serverEntry->ipAdrress);
-							addTableEntry(&table, newEntry);
-							printf("replaced entry\n");
-						}
-						else if(serverEntry == NULL) {
-							printf("trying to add to table\n");
-							addTableEntry(&table, newEntry);
-							printf("added entry to table\n");
-							printTable(&table);
-						}
+					else {
+						TableEntry *entry = entryForIp(&table, packet.dest);
+						if(packet.type == PacketTypeRequest) {
+							if(packet.broadcastId >= lastBroadcastIdHeard) {
 
+								if(packet.broadcastId > lastBroadcastIdHeard && packet.rediscover == 1 && packet.type == PacketTypeRequest) {
+									printf("rediscover flag set - emptying table\n");
+									table.size = 0;
+									entry = NULL;
+								}
+								lastBroadcastIdHeard = packet.broadcastId;
+								if(lastBroadcastIdSent < lastBroadcastIdHeard+1)
+									lastBroadcastIdSent = lastBroadcastIdHeard+1;
 
-						if(strcmp(myIPAddress(), packet.dest) == 0) {
-							//send packet of ODR RREP to nextNode
-							printf("attempting to send packetFromClient: %s\n", packetFromClient.dest);
-							TableEntry *nextHop = entryForIp(&table, packetFromClient.dest);
-							printf("retrieved table entry\n");
-							if(nextHop != NULL) {
-								send_to_node(packetFromClient.dest, packetFromClient.message, PacketTypeAPISend, packetFromClient.rediscover, packetFromClient.port, nextHop->if_index, nextHop->nextHopNode);
-								printf("sent to the node\n");
+								//add the return address
+								TableEntry *retEntry = entryForIp(&table, packet.from);
+								TableEntry newEntry = tableEntryMake(packet.from, packet.hw_addr, inf.if_index, packet.numHops, 1);
+								int shouldForward = 0;
+								if(retEntry == NULL) {
+									printf("Added return adrress to the table\n");
+									addTableEntry(&table, newEntry);
+									reqresp[packet.broadcastId] = ODRNodeMake(inf.if_index, packet.hw_addr);
+									reqrespSize++;
+									shouldForward = 1;
+									printTable(&table);
+								}
+								else if(retEntry->numHops > newEntry.numHops) {
+									//add if better
+									printf("updating better return adress in table\n");
+									removeTableEntry(&table, packet.from);
+									addTableEntry(&table, newEntry);
+									reqresp[packet.broadcastId] = ODRNodeMake(inf.if_index, packet.hw_addr);
+									reqrespSize++;
+									shouldForward = 1;
+									printTable(&table);
+								}
+								else if(reqrespSize <= packet.broadcastId) {
+									reqresp[packet.broadcastId] = ODRNodeMake(inf.if_index, packet.hw_addr);
+									reqrespSize++;
+									shouldForward = 1;
+									printf("Recording reqresp node\n");
+								}
+								entry = entryForIp(&table, packet.dest);
+
+								if(packet.rediscover == 1 || packet.rediscover == 0) {
+									if(strcmp(myIPAddress(), packet.dest) == 0) {
+										printf("RREQ reached it's destination: Sending RREP!\n");
+										send_to_odr_node(packet.from, myIPAddress(), PacketTypeReply, packet.rediscover, packet.port, inf.if_index, packet.hw_addr, 1, packet.broadcastId);
+									}
+									else if(entry != NULL) {
+										//- send back ODR RREP with numHops+1 and my HW adress with type ODR RREP
+										printf("We have %s in our table, sending back the RREP\n", packet.dest);
+										send_to_odr_node(packet.from, packet.dest, PacketTypeReply, 0, packet.port, inf.if_index, packet.hw_addr, entry->numHops+1, packet.broadcastId);
+									}
+									else if(shouldForward) {
+										// printf("Should forward: %d\n", shouldForward);
+										//we should only do this if we just found a better path or did not have on earlier
+										//BROADCAST OUT A RREQ
+										send_broadcast(packet.dest, packet.from, packet.message, packet.broadcastId, packet.type, packet.rediscover, packet.port, inf.if_index, packet.numHops+1);
+									}
+								}
 							}
-							else
-								printf("WTF NEXT NODE WAS NULL\n");
 						}
-						else {
-							ODRNode sender = reqresp[packet.broadcastId];
-							send_to_odr_node(packet.dest, packet.type, packet.rediscover, packet.port, sender.if_index, sender.hw_addr, packet.numHops+1);
+						else if(packet.type == PacketTypeReply) {
+							printf("ODR Recieved RREP\n");
+							//ODR RREP
+							TableEntry *serverEntry = entryForIp(&table, packet.from);
+							TableEntry newEntry = tableEntryMake(packet.from, packet.hw_addr, inf.if_index, packet.numHops, 1);
+							if(serverEntry != NULL && serverEntry->numHops > packet.numHops) {
+								removeTableEntry(&table, serverEntry->ipAdrress);
+								addTableEntry(&table, newEntry);
+								printTable(&table);
+								printf("replaced existing table entry\n");
+							}
+							else if(serverEntry == NULL) {
+								addTableEntry(&table, newEntry);
+								printf("added new entry to table\n");
+								printTable(&table);
+							}
+
+
+							if(strcmp(myIPAddress(), packet.dest) == 0) {
+								//send APP PACKET to first node
+								// printf("attempting to send packetFromClient: %s\n", packetFromClient.dest);
+								TableEntry *nextHop = entryForIp(&table, packetFromClient.dest);
+								// printf("retrieved table entry\n");
+								if(nextHop != NULL && packetFromClient.type != -5) {
+									printf("Recieved RREQ, sending API packet to destination: %s\n", packetFromClient.dest);
+									send_to_node(packetFromClient.dest, packetFromClient.from, packetFromClient.message, PacketTypeAPISend, packetFromClient.rediscover, packetFromClient.port, nextHop->if_index, nextHop->nextHopNode, 1);
+									packetFromClient.type = -5;
+									// printf("sent to the node\n");
+								}
+								// else
+									// printf("WTF NEXT NODE WAS NULL\n");
+							}
+							else {
+								ODRNode sender = reqresp[packet.broadcastId];
+								send_to_odr_node(packet.dest, packet.from, packet.type, packet.rediscover, packet.port, sender.if_index, sender.hw_addr, packet.numHops+1, packet.broadcastId);
+							}
 						}
 					}
 				}
@@ -302,13 +334,13 @@ void startODR() {
 				} while (--i > 0);
 			}
 
-			printf("hw_addr: ");
+			// printf("hw_addr: ");
 			int x;
 			for(x = 0; x < 6; x++) {
 				interfaces[index].hw_addr[x] = hwa->if_haddr[x];
-				printf("%c\n", hwa->if_haddr[x]);
+				// printf("%c\n", hwa->if_haddr[x]);
 			}
-			printf("\n");
+			// printf("\n");
 
 			//create socket and bind
 			interfaces[index].if_index = hwa->if_index;
@@ -340,55 +372,63 @@ void startODR() {
 	unixDomainSocketServer = unixDomainSocketMake(UnixDomainSocketTypeServer, 0, NULL);
 }
 
-void send_to_odr_node(char* destIp, int type, int rediscover, int port, int if_index, char *hw_addr, int numHops) {
-	printf("Sending to odr node from myip: %s!\n", myIPAddress());
-	printf("Sending to hw_addr: %s\n", hw_addr);
+void send_to_odr_node(char* destIp, char *sourceIp, int type, int rediscover, int port, int if_index, char *hw_addr, int numHops, int broadcastId) {
+	// printf("Sending to odr node from myip: %s!\n", myIPAddress());
+	// printf("Sending to hw_addr: %s\n", hw_addr);
 
 	ODRPacket packet;
-	strcpy(packet.from, myIPAddress());
+	strcpy(packet.from, sourceIp);
 	strcpy(packet.dest, destIp);
 	packet.broadcastId = -1;
 	packet.type = type;
 	packet.rediscover = rediscover;
 	packet.port = port;
 	packet.numHops = numHops;
-	int ret = -1;
+	packet.broadcastId = broadcastId;
+	// int ret = -1;
 	int i;
 	for(i=0; i<numberOfInterfaces; i++) {
 		if(interfaces[i].if_index == if_index) {
 			int j;
 			for(j=0; j<6; j++)
 				packet.hw_addr[j] = interfaces[i].hw_addr[j];
-			ret = send_to_node_helper(interfaces[i].fd, if_index, &packet, sizeof(ODRPacket), hw_addr);
+			// ret = send_to_node_helper(interfaces[i].fd, if_index, &packet, sizeof(ODRPacket), hw_addr);
+			send_to_node_helper(interfaces[i].fd, if_index, &packet, sizeof(ODRPacket), hw_addr);
 		}
 	}
-	printf("send_to_node ret: %d\n", ret);
+	// printf("send_to_node ret: %d\n", ret);
 }
 
-void send_to_node(char* destIp, char *msg, int type, int rediscover, int port, int if_index, char *nextNodeHWAdress) {
-	printf("Sending to node from myip: %s!\n", myIPAddress());
+void send_to_node(char* destIp, char * sourceIp, char *msg, int type, int rediscover, int port, int if_index, char *nextNodeHWAdress, int numHops) {
+	// printf("Sending to node from myip: %s!\n", myIPAddress());
+	printf("Forwarding to next hop, final destination: %s original source: %s\n", destIp, sourceIp);
 	ODRPacket packet;
-	strcpy(packet.from, myIPAddress());
+	strcpy(packet.from, sourceIp);
 	strcpy(packet.dest, destIp);
 	strcpy(packet.message, msg);
 	packet.broadcastId = -1;
 	packet.type = type;
 	packet.rediscover = rediscover;
+	packet.numHops = numHops;
 	packet.port = port;
-	int i;
-	int ret = -1;
+	int i,j;
+	// int ret = -1;
 	for(i=0; i<numberOfInterfaces; i++) {
 		if(interfaces[i].if_index == if_index) {
-			ret = send_to_node_helper(interfaces[i].fd, if_index, &packet, sizeof(ODRPacket), nextNodeHWAdress);
+
+			for(j=0; j<6; j++)
+				packet.hw_addr[j] = interfaces[i].hw_addr[j];
+			send_to_node_helper(interfaces[i].fd, if_index, &packet, sizeof(ODRPacket), nextNodeHWAdress);
+			// ret = send_to_node_helper(interfaces[i].fd, if_index, &packet, sizeof(ODRPacket), nextNodeHWAdress);
 		}
 	}
-	printf("send_to_node ret: %d\n", ret);
+	// printf("send_to_node ret: %d\n", ret);
 }
 
 void send_broadcast(char* destIp, char *fromIp, char *msg, int broadcastId, int type, int rediscover, int port, int incoming_if_index, int numHops) {
-	printf("Sent broadcast from myip: %s!\n", myIPAddress());
+	printf("Sent broadcast from my ip: %s!\n", myIPAddress());
 	ODRPacket packet;
-	strcpy(packet.from, myIPAddress());
+	strcpy(packet.from, fromIp);
 	strcpy(packet.dest, destIp);
 	strcpy(packet.message, msg);
 	packet.broadcastId = broadcastId;
@@ -402,7 +442,7 @@ void send_broadcast(char* destIp, char *fromIp, char *msg, int broadcastId, int 
 			int j;
 			for(j=0; j<6; j++)
 				packet.hw_addr[j] = interfaces[i].hw_addr[j];
-			printf("Sending broadcast on if_index: %d hw_addr: %s\n", interfaces[i].if_index, interfaces[i].hw_addr);
+			printf("Sending broadcast on if_index: %d\n", interfaces[i].if_index);
 			send_broadcast_helper(interfaces[i].fd, interfaces[i].if_index, &packet, sizeof(ODRPacket));
 		}
 	}
@@ -461,7 +501,7 @@ int recieve_broadcast(int fd, char *addr, void *msg, int len) {
 	if(ret <= 0) printf("recvfrom() error:  %d\n",errno);
 
 	if((void*)&tempAddr == NULL)
-		printf("FUCK\n");
+		printf("Critical Error\n");
 	else {
 		memcpy(addr,tempAddr.sll_addr,6);
 		memcpy(msg,tempBuffer,len);

@@ -14,7 +14,6 @@
 ///tmp/unix.dg?
 #define SERVER_SUN_PATH 	("/tmp/1895_server_sun_path.dg")
 #define ODR_SUN_PATH 		("/tmp/1895_odr_sun_path.dg")
-#define CLIENT_SUN_PATH 	("/tmp/-XXXXXX")
 
 //Packet Structures
 
@@ -88,6 +87,8 @@ void unixDomainSocketUnlink(UnixDomainSocket *socket);
 int sendToUnixDomainSocket(int fd, char *sun_path, char *message, PacketType type, int rediscover, char *fromIp, char *toIp, int port);
 int readFromUnixDomainSocket(int fd, char *sun_path, UnixDomainPacket *packet);
 ODRNode ODRNodeMake(int if_index, char *hw_addr);
+
+int vmNum(char *ip);
 
 //API
 

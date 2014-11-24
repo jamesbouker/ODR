@@ -16,6 +16,10 @@ int count=0;
 void sendMessage(UnixDomainSocket *socket, char *destIp, char *message, int rediscover) {
 	// count++;
 	// if(count != 2)
+	if(strcmp(clientIP(), destIp) == 0) {
+		printf("Cannot send a message to localhost: Unsupported feature\n");
+	}
+	else
 		msg_send(socket->fd, destIp, 7847, message, rediscover);
 }
 
@@ -38,8 +42,11 @@ void awaitResponse(UnixDomainSocket *socket) {
 			int port;
 			msg_recv(socket->fd, messageRcv, fromAddr, &port);
 
+			time_t ts = time(NULL);
+    		char *buff = ctime(&ts);
 			printf("The client recieved a reply\n");
 			printf("From: %s\nMessage: %s\n", fromAddr, messageRcv);
+			printf("Arrival Time: %s\n", buff);
 			break;
 		}
 		else if(ret == 0 && timeoutCount == 0) {

@@ -13,12 +13,10 @@ void listenLoop() {
 	int ret;
 
 	while (1) {
-		printf("waiting on select\n");
 
 		FD_ZERO(&set);
 		FD_SET(listeningSocket->fd, &set);
 		ret = select(listeningSocket->fd + 1, &set, NULL, NULL, NULL);
-		printf("select returned: %d\n", ret);
 
 		if (ret > 0) {
 			//unix domain was written to!
@@ -27,7 +25,7 @@ void listenLoop() {
 			int port;
 			msg_recv(listeningSocket->fd, message, fromAddr, &port);
 
-			printf("The server recieved a message in it's Unix Domain Socket\n");
+			printf("\nmsg_recv returned\n");
 			printf("From: %s\nMessage: %s\n", fromAddr, message);
 			
 			if(strcmp("TIME", message) == 0) {

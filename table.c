@@ -60,14 +60,21 @@ TableEntry * entryForIp(Table *table, char *ipAdrress) {
 	}
 }
 
-void printTable(Table *table) {
-	int i;
+void printTable(Table *table) { 
+	int i,j;
 	int size = table[0].size;
+	char *ptr;
 	TableEntry *entries = table[0].entries;
 
 	printf("Table Size: %d\n", size);
 	for(i = 0; i < size; i++) {
 		TableEntry e = entries[i];
-		printf("ipAdrress: %s\tnextHopNode: %s\tif_index: %d\tnumHops: %d\n", e.ipAdrress, e.nextHopNode, e.if_index, e.numHops);
+		printf("ipAdrress: %s\tif_index: %d\tnumHops: %d\thwa_addr: ", e.ipAdrress, e.if_index, e.numHops);
+		ptr = e.nextHopNode;
+		j = 6;
+		do {
+			printf("%.2x%s", *ptr++ & 0xff, (j == 1) ? " " : ":");
+		} while (--j > 0);
+		printf("\n");
 	}
 }
